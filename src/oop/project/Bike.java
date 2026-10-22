@@ -1,10 +1,7 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
-
 
 package oop.project;
+
+import java.time.LocalDateTime;
 
 public class Bike extends Vehicle {
 
@@ -13,9 +10,23 @@ public class Bike extends Vehicle {
     }
 
     @Override
-    public double calculateFee(int hours) {
-        return Math.max(0, hours) * 20.0;
+    public double calculateFee(int hours, LocalDateTime entryTime) {
+        double total = 0;
+
+        for (int i = 0; i < hours; i++) {
+            int hourOfDay = entryTime.plusHours(i).getHour();
+
+            if (hourOfDay >= 6 && hourOfDay < 12) {
+                total += 15;       // Morning
+            } else if (hourOfDay >= 12 && hourOfDay < 16) {
+                total += 20;       // Noon
+            } else if (hourOfDay >= 16 && hourOfDay < 20) {
+                total += 25;       // Evening
+            } else {
+                total += 10;       // Night
+            }
+        }
+
+        return total;
     }
 }
-
-

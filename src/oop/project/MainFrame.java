@@ -1,6 +1,3 @@
-
-
-
 package oop.project;
 
 import javax.swing.*;
@@ -70,7 +67,6 @@ public class MainFrame extends JFrame {
 
         carSlotsPanel = new JPanel(new GridLayout(1, 5, 6, 6));
         bikeSlotsPanel = new JPanel(new GridLayout(2, 5, 6, 6));
-
         carSlotsPanel.setBackground(Color.WHITE);
         bikeSlotsPanel.setBackground(Color.WHITE);
 
@@ -153,7 +149,6 @@ public class MainFrame extends JFrame {
 
         carStatus = new JLabel();
         bikeStatus = new JLabel();
-
         panel.add(carStatus);
         panel.add(bikeStatus);
 
@@ -174,23 +169,53 @@ public class MainFrame extends JFrame {
         String number = vehicleField.getText().trim();
         String mobile = mobileField.getText().trim();
 
+        if (number.isEmpty() || mobile.isEmpty()) {
+            showOutput("Please enter the vehicle number and mobile number.");
+            return;
+        }
+
         String receipt = manager.prepareExit(number, mobile);
-        showOutput(receipt);
 
-        if (receipt.startsWith("PARKING RECEIPT")) {
-            int choice = JOptionPane.showConfirmDialog(
-                    this,
-                    receipt + "\n\nHas the customer paid?",
-                    "Exit & Payment",
-                    JOptionPane.YES_NO_OPTION,
-                    JOptionPane.INFORMATION_MESSAGE);
+        if (receipt == null || !receipt.contains("PARKING RECEIPT")) {
+            showOutput(receipt == null
+                    ? "Unable to generate the receipt."
+                    : receipt);
+            return;
+        }
 
-            if (choice == JOptionPane.YES_OPTION) {
-                showOutput(manager.confirmPayment(number, mobile));
-                refreshDashboard();
+        int choice = JOptionPane.showConfirmDialog(
+                this,
+                receipt + "\n\nPayment is pending.\n\nHas the customer paid?",
+                "Exit & Payment",
+                JOptionPane.YES_NO_CANCEL_OPTION,
+                JOptionPane.INFORMATION_MESSAGE);
+
+        if (choice == JOptionPane.YES_OPTION) {
+            String paymentResult = manager.confirmPayment(number, mobile);
+            showOutput(paymentResult);
+            refreshDashboard();
+
+            // ParkingManager should return the final receipt with PAYMENT STATUS: PAID.
+            if (paymentResult != null
+                    && paymentResult.contains("PAYMENT STATUS: PAID")) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        paymentResult,
+                        "Payment Receipt - PAID",
+                        JOptionPane.INFORMATION_MESSAGE);
             } else {
-                showOutput("Payment not confirmed. The slot remains occupied.");
+                JOptionPane.showMessageDialog(
+                        this,
+                        paymentResult == null ? "Payment result unavailable." : paymentResult,
+                        "Payment Result",
+                        JOptionPane.INFORMATION_MESSAGE);
             }
+        } else if (choice == JOptionPane.NO_OPTION) {
+            showOutput(receipt + "\n\nPayment is still pending."
+                    + "\nThe vehicle remains in its parking slot.");
+        } else {
+            showOutput(receipt + "\n\nPayment confirmation cancelled."
+                    + "\nThe vehicle remains in its parking slot.");
         }
     }
 
@@ -198,12 +223,11 @@ public class MainFrame extends JFrame {
         String result = manager.findVehicle(
                 vehicleField.getText(),
                 mobileField.getText());
-
         showOutput(result);
     }
 
     private void showOutput(String message) {
-        outputArea.setText(message);
+        outputArea.setText(message == null ? "" : message);
         outputArea.setCaretPosition(0);
     }
 
@@ -256,6 +280,3 @@ public class MainFrame extends JFrame {
         bikeSlotsPanel.repaint();
     }
 }
-
-
-

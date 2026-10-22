@@ -1,15 +1,7 @@
+
 package oop.project;
 
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
-
-/**
- *
- * @author SARIGA S
- */
-
+import java.time.LocalDateTime;
 
 public abstract class Vehicle {
 
@@ -33,8 +25,6 @@ public abstract class Vehicle {
         this.mobileNumber = mobileNumber;
     }
 
-    public abstract double calculateFee(int hours);
+    public abstract double calculateFee(
+            int hours, LocalDateTime entryTime);
 }
-
-
-

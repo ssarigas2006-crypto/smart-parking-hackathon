@@ -44,11 +44,12 @@ public class ParkingManager {
     }
 
     private void loadParkingHistory() throws SQLException {
-        String sql = "SELECT vehicle_number, mobile_number, vehicle_type, " +
-                "slot_number, entry_time, exit_time, parking_minutes, " +
-                "parking_hours, fee, payment_status, payment_time " +
-                "FROM parking_history WHERE payment_status = 'PAID' " +
-                "ORDER BY id";
+        String sql = "SELECT vehicle_number, mobile_number, vehicle_type, "
+                + "slot_number, entry_time, exit_time, parking_minutes, "
+                + "parking_hours, fee, payment_status, payment_time, "
+                + "base_fee, overtime_hours, overtime_charge "
+                + "FROM parking_history WHERE payment_status = 'PAID' "
+                + "ORDER BY id";
 
         try (Connection con = DatabaseManager.getConnection();
              PreparedStatement ps = con.prepareStatement(sql);
@@ -57,20 +58,23 @@ public class ParkingManager {
             history.clear();
 
             while (rs.next()) {
-                Timestamp entryTimestamp = rs.getTimestamp("entry_time");
-                Timestamp exitTimestamp = rs.getTimestamp("exit_time");
-                Timestamp paymentTimestamp = rs.getTimestamp("payment_time");
+                Timestamp entryTs = rs.getTimestamp("entry_time");
+                Timestamp exitTs = rs.getTimestamp("exit_time");
+                Timestamp paymentTs = rs.getTimestamp("payment_time");
 
-                if (entryTimestamp == null || exitTimestamp == null) {
+                if (entryTs == null || exitTs == null) {
                     continue;
                 }
 
-                LocalDateTime entry = entryTimestamp.toLocalDateTime();
-                LocalDateTime exit = exitTimestamp.toLocalDateTime();
+                LocalDateTime entry = entryTs.toLocalDateTime();
+                LocalDateTime exit = exitTs.toLocalDateTime();
 
                 long minutes = rs.getLong("parking_minutes");
                 int hours = rs.getInt("parking_hours");
                 double fee = rs.getDouble("fee");
+                double baseFee = rs.getDouble("base_fee");
+                int overtimeHours = rs.getInt("overtime_hours");
+                double overtimeCharge = rs.getDouble("overtime_charge");
 
                 ParkingRecord record = new ParkingRecord(
                         rs.getString("vehicle_number"),
@@ -81,13 +85,16 @@ public class ParkingManager {
                         exit,
                         minutes,
                         hours,
+                        baseFee,
+                        overtimeHours,
+                        overtimeCharge,
                         fee
                 );
 
                 record.paid = true;
 
-                if (paymentTimestamp != null) {
-                    record.paymentTime = paymentTimestamp.toLocalDateTime();
+                if (paymentTs != null) {
+                    record.paymentTime = paymentTs.toLocalDateTime();
                 }
 
                 history.add(record);
@@ -96,8 +103,8 @@ public class ParkingManager {
     }
 
     private void loadActiveVehicles() throws SQLException {
-        String sql = "SELECT vehicle_number, mobile_number, vehicle_type, " +
-                "slot_number, entry_time FROM active_vehicles";
+        String sql = "SELECT vehicle_number, mobile_number, vehicle_type, "
+                + "slot_number, entry_time FROM active_vehicles";
 
         try (Connection con = DatabaseManager.getConnection();
              PreparedStatement ps = con.prepareStatement(sql);
@@ -108,31 +115,45 @@ public class ParkingManager {
                 String mobile = rs.getString("mobile_number");
                 String type = rs.getString("vehicle_type");
                 String slotLabel = rs.getString("slot_number");
-                Timestamp entryTimestamp = rs.getTimestamp("entry_time");
+                Timestamp entryTs = rs.getTimestamp("entry_time");
 
-                if (entryTimestamp == null) {
+                if (entryTs == null) {
                     continue;
                 }
 
-                LocalDateTime entry = entryTimestamp.toLocalDateTime();
+                LocalDateTime entry = entryTs.toLocalDateTime();
+                ParkingSlot matchingSlot = null;
 
                 for (ParkingSlot slot : slots) {
-                    if (slot.getSlotLabel().equalsIgnoreCase(slotLabel)
-                            && !slot.isOccupied()) {
-
-                        Vehicle vehicle;
-
-                        if (type.equalsIgnoreCase("Car")) {
-                            vehicle = new Car(number, mobile);
-                        } else {
-                            vehicle = new Bike(number, mobile);
-                        }
-
-                        slot.parkVehicle(vehicle);
-                        entryTimes.put(number, entry);
+                    if (slot.getSlotLabel().equalsIgnoreCase(slotLabel)) {
+                        matchingSlot = slot;
                         break;
                     }
                 }
+
+                if (matchingSlot == null) {
+                    System.err.println("Unknown parking slot: " + slotLabel);
+                    continue;
+                }
+
+                if (matchingSlot.isOccupied()) {
+                    System.err.println("Duplicate occupied slot: " + slotLabel);
+                    continue;
+                }
+
+                Vehicle vehicle;
+
+                if (type.equalsIgnoreCase("Car")) {
+                    vehicle = new Car(number, mobile);
+                } else if (type.equalsIgnoreCase("Bike")) {
+                    vehicle = new Bike(number, mobile);
+                } else {
+                    System.err.println("Unknown vehicle type: " + type);
+                    continue;
+                }
+
+                matchingSlot.parkVehicle(vehicle);
+                entryTimes.put(number, entry);
             }
         }
     }
@@ -170,21 +191,23 @@ public class ParkingManager {
 
         for (ParkingRecord record : pendingRecords.values()) {
             if (record.vehicleNumber.equalsIgnoreCase(number)) {
-                return "This vehicle has an unpaid exit. Complete its payment first.";
+                return "This vehicle has an unpaid exit. "
+                        + "Complete its payment first.";
             }
         }
 
         Vehicle vehicle;
+        String requiredType;
 
         if (type.equalsIgnoreCase("Car")) {
             vehicle = new Car(number, mobile);
             type = "Car";
+            requiredType = "C";
         } else {
             vehicle = new Bike(number, mobile);
             type = "Bike";
+            requiredType = "B";
         }
-
-        String requiredType = type.equals("Car") ? "C" : "B";
 
         for (ParkingSlot slot : slots) {
             if (slot.getSlotType().equals(requiredType)
@@ -194,8 +217,11 @@ public class ParkingManager {
 
                 try {
                     DatabaseManager.saveActiveVehicle(
-                            number, mobile, type,
-                            slot.getSlotLabel(), entryTime
+                            number,
+                            mobile,
+                            type,
+                            slot.getSlotLabel(),
+                            entryTime
                     );
                 } catch (SQLException e) {
                     return "Database error: vehicle was not saved.\n"
@@ -241,7 +267,8 @@ public class ParkingManager {
         ParkingSlot slot = findParkedSlot(number, mobile);
 
         if (slot == null) {
-            return "Vehicle not found. Check the vehicle number and mobile number.";
+            return "Vehicle not found. Check the vehicle number "
+                    + "and mobile number.";
         }
 
         Vehicle vehicle = slot.getVehicle();
@@ -253,7 +280,8 @@ public class ParkingManager {
                 + "Vehicle Type: "
                 + (slot.getSlotType().equals("C") ? "Car" : "Bike") + "\n"
                 + "Parking Slot: " + slot.getSlotLabel() + "\n"
-                + "Entry Time: " + entry.format(formatter);
+                + "Entry Time: "
+                + (entry == null ? "Unknown" : entry.format(formatter));
     }
 
     public String showParkedVehicles() {
@@ -267,14 +295,23 @@ public class ParkingManager {
 
             if (vehicle != null) {
                 found = true;
-                result.append("Slot: ").append(slot.getSlotLabel()).append("\n");
-                result.append("Vehicle: ").append(vehicle.getVehicleNumber()).append("\n");
+
+                result.append("Slot: ")
+                        .append(slot.getSlotLabel()).append("\n");
+                result.append("Vehicle: ")
+                        .append(vehicle.getVehicleNumber()).append("\n");
                 result.append("Type: ")
                         .append(slot.getSlotType().equals("C") ? "Car" : "Bike")
                         .append("\n");
-                result.append("Mobile: ").append(vehicle.getMobileNumber()).append("\n");
+                result.append("Mobile: ")
+                        .append(vehicle.getMobileNumber()).append("\n");
+
+                LocalDateTime entry = entryTimes.get(
+                        vehicle.getVehicleNumber());
+
                 result.append("Entry: ")
-                        .append(entryTimes.get(vehicle.getVehicleNumber()).format(formatter))
+                        .append(entry == null
+                                ? "Unknown" : entry.format(formatter))
                         .append("\n\n");
             }
         }
@@ -301,15 +338,20 @@ public class ParkingManager {
         }
 
         LocalDateTime entry = entryTimes.get(key);
+
+        if (entry == null) {
+            return "Entry time is missing. Please check the database.";
+        }
+
         LocalDateTime exit = LocalDateTime.now();
 
         long minutes = Math.max(
                 1, Duration.between(entry, exit).toMinutes());
 
-        int hours = (int) Math.max(1, (minutes + 59) / 60);
-
         Vehicle vehicle = slot.getVehicle();
-        double fee = vehicle.calculateFee(hours);
+
+        ParkingFeeCalculator.FeeBreakdown breakdown =
+                ParkingFeeCalculator.calculate(vehicle, entry, minutes);
 
         ParkingRecord record = new ParkingRecord(
                 vehicle.getVehicleNumber(),
@@ -319,29 +361,37 @@ public class ParkingManager {
                 entry,
                 exit,
                 minutes,
-                hours,
-                fee
+                breakdown.billableHours,
+                breakdown.baseFee,
+                breakdown.overtimeHours,
+                breakdown.overtimeCharge,
+                breakdown.totalFee
         );
 
-        pendingPayments.put(key, fee);
+        pendingPayments.put(key, record.fee);
         pendingRecords.put(key, record);
 
         return createReceipt(record) + "\n\nPayment is pending.";
     }
 
     private String createReceipt(ParkingRecord record) {
-        return "PARKING RECEIPT\n\n"
+        return "========== PARKING RECEIPT ==========\n\n"
                 + "Vehicle Number: " + record.vehicleNumber + "\n"
                 + "Vehicle Type: " + record.vehicleType + "\n"
                 + "Parking Slot: " + record.slotLabel + "\n"
                 + "Entry Time: " + record.entry.format(formatter) + "\n"
                 + "Exit Time: " + record.exit.format(formatter) + "\n"
                 + "Duration: " + record.minutes + " minute(s)\n"
-                + "Billable Hours: " + record.hours + "\n"
-                + "Hourly Rate: Rs. "
-                + String.format("%.2f", record.fee / record.hours) + "\n"
-                + "Total Fee: Rs. "
-                + String.format("%.2f", record.fee);
+                + "Billable Hours: " + record.hours + "\n\n"
+                + "Base Parking Fee: Rs. "
+                + String.format("%.2f", record.baseFee) + "\n"
+                + "Overtime Hours: " + record.overtimeHours + "\n"
+                + "Overtime Penalty: Rs. "
+                + String.format("%.2f", record.overtimeCharge) + "\n"
+                + "-------------------------------------\n"
+                + "TOTAL FEE: Rs. "
+                + String.format("%.2f", record.fee) + "\n"
+                + "=====================================";
     }
 
     public String confirmPayment(String number, String mobile) {
@@ -371,6 +421,9 @@ public class ParkingManager {
                     record.exit,
                     record.minutes,
                     record.hours,
+                    record.baseFee,
+                    record.overtimeHours,
+                    record.overtimeCharge,
                     record.fee,
                     paymentTime
             );
@@ -378,8 +431,9 @@ public class ParkingManager {
             DatabaseManager.removeActiveVehicle(key);
 
         } catch (SQLException e) {
-            return "Database error: payment was not completed in the system.\n"
-                    + e.getMessage();
+            return "Database error: payment was not completed.\n"
+                    + e.getMessage()
+                    + "\nPayment status: PENDING";
         }
 
         record.paid = true;
@@ -391,11 +445,26 @@ public class ParkingManager {
         entryTimes.remove(key);
         slot.removeVehicle();
 
-        return "Payment confirmed successfully!\n\n"
-                + "Vehicle: " + record.vehicleNumber + "\n"
-                + "Slot Released: " + record.slotLabel + "\n"
-                + "Amount Collected: Rs. "
-                + String.format("%.2f", record.fee);
+        return "========== PARKING RECEIPT ==========\n\n"
+                + "Vehicle Number: " + record.vehicleNumber + "\n"
+                + "Vehicle Type: " + record.vehicleType + "\n"
+                + "Parking Slot: " + record.slotLabel + "\n"
+                + "Entry Time: " + record.entry.format(formatter) + "\n"
+                + "Exit Time: " + record.exit.format(formatter) + "\n"
+                + "Duration: " + record.minutes + " minute(s)\n"
+                + "Billable Hours: " + record.hours + "\n\n"
+                + "Base Parking Fee: Rs. "
+                + String.format("%.2f", record.baseFee) + "\n"
+                + "Overtime Hours: " + record.overtimeHours + "\n"
+                + "Overtime Penalty: Rs. "
+                + String.format("%.2f", record.overtimeCharge) + "\n"
+                + "-------------------------------------\n"
+                + "TOTAL FEE: Rs. "
+                + String.format("%.2f", record.fee) + "\n"
+                + "PAYMENT STATUS: PAID\n"
+                + "Payment Time: " + paymentTime.format(formatter) + "\n"
+                + "=====================================\n"
+                + "Thank you for parking with us!";
     }
 
     public int getAvailableSlotCount(String type) {
@@ -448,12 +517,26 @@ public class ParkingManager {
             result.append("No completed paid parking sessions yet.\n");
         } else {
             for (ParkingRecord record : history) {
-                result.append("Vehicle: ").append(record.vehicleNumber).append("\n");
-                result.append("Type: ").append(record.vehicleType).append("\n");
-                result.append("Slot: ").append(record.slotLabel).append("\n");
-                result.append("Entry: ").append(record.entry.format(formatter)).append("\n");
-                result.append("Exit: ").append(record.exit.format(formatter)).append("\n");
-                result.append("Duration: ").append(record.minutes).append(" minutes\n");
+                result.append("Vehicle: ")
+                        .append(record.vehicleNumber).append("\n");
+                result.append("Type: ")
+                        .append(record.vehicleType).append("\n");
+                result.append("Slot: ")
+                        .append(record.slotLabel).append("\n");
+                result.append("Entry: ")
+                        .append(record.entry.format(formatter)).append("\n");
+                result.append("Exit: ")
+                        .append(record.exit.format(formatter)).append("\n");
+                result.append("Duration: ")
+                        .append(record.minutes).append(" minutes\n");
+                result.append("Base Fee: Rs. ")
+                        .append(String.format("%.2f", record.baseFee))
+                        .append("\n");
+                result.append("Overtime Hours: ")
+                        .append(record.overtimeHours).append("\n");
+                result.append("Overtime Penalty: Rs. ")
+                        .append(String.format("%.2f", record.overtimeCharge))
+                        .append("\n");
                 result.append("Fee Paid: Rs. ")
                         .append(String.format("%.2f", record.fee)).append("\n");
                 result.append("Payment Status: PAID\n\n");
@@ -488,6 +571,9 @@ public class ParkingManager {
         public LocalDateTime exit;
         public long minutes;
         public int hours;
+        public double baseFee;
+        public int overtimeHours;
+        public double overtimeCharge;
         public double fee;
         public boolean paid;
         public LocalDateTime paymentTime;
@@ -501,6 +587,9 @@ public class ParkingManager {
                 LocalDateTime exit,
                 long minutes,
                 int hours,
+                double baseFee,
+                int overtimeHours,
+                double overtimeCharge,
                 double fee) {
 
             this.vehicleNumber = vehicleNumber;
@@ -511,6 +600,9 @@ public class ParkingManager {
             this.exit = exit;
             this.minutes = minutes;
             this.hours = hours;
+            this.baseFee = baseFee;
+            this.overtimeHours = overtimeHours;
+            this.overtimeCharge = overtimeCharge;
             this.fee = fee;
             this.paid = false;
         }
