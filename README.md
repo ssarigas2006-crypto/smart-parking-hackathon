@@ -1,32 +1,67 @@
-========================
-BUILD OUTPUT DESCRIPTION
-========================
+# Smart Parking Management System
 
-When you build an Java application project that has a main class, the IDE
-automatically copies all of the JAR
-files on the projects classpath to your projects dist/lib folder. The IDE
-also adds each of the JAR files to the Class-Path element in the application
-JAR files manifest file (MANIFEST.MF).
+A Java-based Smart Parking Management System built with Object-Oriented Programming (OOP), Java Swing, and MySQL.
 
-To run the project from the command line, go to the dist folder and
-type the following:
+## Features
 
-java -jar "oop_project.jar" 
+- Vehicle management for cars and bikes
+- Parking slot management
+- Dynamic parking fees based on vehicle type and time of day
+- Parking duration calculation with rounded-up billable hours
+- Overtime penalties for parking longer than 6 hours
+- Detailed exit receipts with fee breakdown and payment status
+- Payment records and parking history
 
-To distribute this project, zip up the dist folder (including the lib folder)
-and distribute the ZIP file.
+## Dynamic Parking Fees
 
-Notes:
+| Time Period | Car per Hour | Bike per Hour |
+|---|---:|---:|
+| Morning (6 AM–12 PM) | ₹40 | ₹15 |
+| Noon (12 PM–4 PM) | ₹50 | ₹20 |
+| Evening (4 PM–8 PM) | ₹60 | ₹25 |
+| Night (8 PM–6 AM) | ₹30 | ₹10 |
 
-* If two JAR files on the project classpath have the same name, only the first
-JAR file is copied to the lib folder.
-* Only JAR files are copied to the lib folder.
-If the classpath contains other types of files or folders, these files (folders)
-are not copied.
-* If a library on the projects classpath also has a Class-Path element
-specified in the manifest,the content of the Class-Path element has to be on
-the projects runtime path.
-* To set a main class in a standard Java project, right-click the project node
-in the Projects window and choose Properties. Then click Run and enter the
-class name in the Main Class field. Alternatively, you can manually type the
-class name in the manifest Main-Class element.
+### Overtime Penalty
+
+If parking exceeds 6 hours, a one-time penalty applies:
+
+- Car: ₹100
+- Bike: ₹50
+
+Billable parking hours are rounded up, with a minimum charge of one hour.
+
+## Technologies
+
+- Java
+- Java Swing
+- MySQL
+- JDBC
+- NetBeans IDE
+
+## Requirements
+
+- Java Development Kit (JDK)
+- NetBeans IDE
+- MySQL Server
+- MySQL JDBC driver
+
+## Setup
+
+1. Clone or download this repository.
+2. Open the project in NetBeans IDE.
+3. Create the `smart_parking` database in MySQL.
+4. Import the required database schema and configure the database connection.
+5. Configure the MySQL password using the `SMART_PARKING_DB_PASSWORD` environment variable.
+6. Build and run the project.
+
+## Project Structure
+
+- `src/oop/project/` — Java source files
+- `nbproject/` — NetBeans project configuration
+- `build.xml` — Ant build configuration
+
+## Purpose
+
+This project demonstrates Java OOP, database connectivity, desktop GUI development, and dynamic parking fee calculation.
+
+Extended with dynamic time-based parking fees and overtime penalties for a hackathon.
